@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>To-Do List with Notifications</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f4;
+        margin: 0;
+        padding: 0;
+    }
+    .container {
+        max-width: 500px;
+        margin: 50px auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+        text-align: center;
+        font-size: 1.6rem;
+    }
+    input, button {
+        padding: 8px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+    }
+    #taskInput {
+        width: 45%;
+    }
+    #dueDate {
+        width: 30%;
+    }
+    #dueTime {
+        width: 20%;
+    }
+    #addBtn {
+        background: #28a745;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    #addBtn:hover {
+        background: #218838;
+    }
+    ul {
+        list-style: none;
+        padding: 0;
+        margin-top: 15px;
+    }
+    li {
+        padding: 8px;
+        background: #fafafa;
+        border-bottom: 1px solid #ddd;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    li.completed span.task-text {
+        text-decoration: line-through;
+        color: #888;
+    }
+    li.overdue span.task-text {
+        color: red;
+        font-weight: bold;
+    }
+    .buttons {
+        display: flex;
+        gap: 6px;
+    }
+    button.complete {
+        background: #007bff;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    button.complete:hover {
+        background: #0056b3;
+    }
+    button.delete {
+        background: #dc3545;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    button.delete:hover {
+        background: #c82333;
+    }
+    small {
+        font-size: 0.8rem;
+        color: #555;
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>To-Do List</h1>
+    <input type="text" id="taskInput" placeholder="Enter a task">
+    <input type="date" id="dueDate">
+    <input type="time" id="dueTime">
+    <button id="addBtn">Add</button>
+    <ul id="taskList"></ul>
+</div>
+
+<script>
+    const taskInput = document.getElementById("taskInput");
+    const dueDateInput = document.getElementById("dueDate");
+    const dueTimeInput = document.getElementById("dueTime");
+    const addBtn = document.getElementById("addBtn");
+    const taskList = document.getElementById("taskList");
+
+    // Request notification permission at start
+    if ("Notification" in window) {
+        Notification.requestPermission();
+    }
+
+    // Load saved tasks
+    window.onload = loadTasks;
+
+    function loadTasks() {
+        const tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+        tasks.forEach(task => {
+            addTaskToDOM(task.text, task.dueDateTime, task.completed, false);
+            if (!task.completed) scheduleNotification(task.text, task.dueDateTime);
+        });
+    }
+
+    function saveTasks() {
+        const tasks = [];
+        document.querySelectorAll("#taskList li").forEach(li => {
+            tasks.push({
+                text: li.querySelector("span.task-text").textContent,
+                dueDateTime: li.querySelector("small").dataset.datetime,
+                completed: li.classList.contains("completed")
+            });
+        });
+        localStorage.setItem("tasks", JSON.stringify(tasks));
+    }
+
+    function addTaskToDOM(taskText, dueDateTime, completed = false, schedule = true) {
+        const li = document.createElement("li");
+
+        const span = document.createElement("span");
+        span.classList.add("task-text");
+        span.textContent = taskText;
+
+        const dateLabel = document.createElement("small");
+        dateLabel.textContent = dueDateTime ? `Due: ${new Date(dueDateTime).toLocaleString()}` : "No due date";
+        dateLabel.dataset.datetime = dueDateTime || "";
+
+        li.appendChild(span);
+        li.appendChild(dateLabel);
+
+        // Mark overdue if date passed and not completed
+        if (dueDateTime && new Date(dueDateTime) < new Date() && !completed) {
+            li.classList.add("overdue");
+        }
+
+        if (completed) li.classList.add("completed");
+
+        const btnContainer = document.createElement("div");
+        btnContainer.classList.add("buttons");
+
+        const completeBtn = document.createElement("button");
+        completeBtn.textContent = "Complete";
+        completeBtn.classList.add("complete");
+        completeBtn.addEventListener("click", () => {
+            li.classList.toggle("completed");
+            li.classList.remove("overdue");
+            saveTasks();
+        });
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "Delete";
+        delBtn.classList.add("delete");
+        delBtn.addEventListener("click", () => {
+            li.remove();
+            saveTasks();
+        });
+
+        btnContainer.appendChild(completeBtn);
+        btnContainer.appendChild(delBtn);
+        li.appendChild(btnContainer);
+
+        taskList.appendChild(li);
+        saveTasks();
+
+        if (schedule && dueDateTime && !completed) {
+            scheduleNotification(taskText, dueDateTime);
+        }
+    }
+
+    function scheduleNotification(taskText, dueDateTime) {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        const timeDiff = new Date(dueDateTime) - new Date();
+        if (timeDiff <= 0) {
+            new Notification("Task Due!", { body: taskText });
+        } else {
+            setTimeout(() => {
+                new Notification("Task Due!", { body: taskText });
+            }, timeDiff);
+        }
+    }
+
+    addBtn.addEventListener("click", () => {
+        const text = taskInput.value.trim();
+        const dueDate = dueDateInput.value;
+        const dueTime = dueTimeInput.value;
+        const dueDateTime = (dueDate && dueTime) ? `${dueDate}T${dueTime}:00` : dueDate ? `${dueDate}T00:00:00` : "";
+
+        if (text !== "") {
+            addTaskToDOM(text, dueDateTime);
+            taskInput.value = "";
+            dueDateInput.value = "";
+            dueTimeInput.value = "";
+        }
+    });
+
+    taskInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") addBtn.click();
+    });
+</script>
+</body>
+</html>
